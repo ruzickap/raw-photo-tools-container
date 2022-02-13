@@ -6,4 +6,5 @@ LABEL homepage="https://github.com/ruzickap/raw-photo-tools-container"
 
 # hadolint ignore=DL3018
 RUN set -eux && \
-    apk add --no-cache bash darktable exiftool
+    apk add --no-cache bash darktable exiftool && \
+    mkdir -pv /.config/darktable
