@@ -8,4 +8,5 @@ ENV HOME /tmp
 
 # hadolint ignore=DL3018
 RUN set -eux && \
-    apk add --no-cache bash darktable exiftool
+    apk add --no-cache darktable exiftool && \
+    mkdir -pv /.config/darktable
