@@ -1,116 +1,72 @@
-name: Container build
+name: container-build
 
 on:
   workflow_dispatch:
+    inputs:
+      container_registry_push:
+        description: "Push the image to Container Registry"
+        type: boolean
+        required: false
+        default: false
+      container_image_skip_vulnerability_checks:
+        description: "Skip image (vulnerability) scanner"
+        type: boolean
+        required: false
+        default: false
+      container_image_expires_after:
+        description: "Expires after (days) [or 'Never']"
+        type: string
+        required: false
+        default: "730"
   push:
     tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+*'
-  pull_request:
+      # For code tagging use 'v' prefix, but 'v' prefix should not be part of container tag
+      - "v[0-9]+.[0-9]+.[0-9]+*"
   schedule:
-    - cron: '5 5 * * *'
-
-env:
-  CONTAINER_IMAGE_NAME: raw-photo-tools
-  CONTAINER_REGISTRY: ghcr.io
-  CONTAINER_REGISTRY_USER: ${{ github.repository_owner }}
-  CONTAINER_REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+    - cron: "0 0 * 1 1"
 
 jobs:
-  container-build:
+  container-build-pipeline:
+    name: "💡 ${{ matrix.container_image_dockerfile_location }}"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Contains several vulnerabilities
+          - container_image_dockerfile_location: Dockerfile
+            # This is the "default Dockerfile", which will create tags without any suffix (like 'latest')
+            container_image_tag_suffix: ""
+    uses: ruzickap/container-build/.github/workflows/container-build-reusable-workflow.yml@main
+    with:
+      container_image_dockerfile_location: ${{ matrix.container_image_dockerfile_location }}
+      container_image_tag_suffix: ${{ matrix.container_image_tag_suffix }}
+      # The following variables can not be easily taken to `env` variables, because it is not supported :-(
+      container_image_destination: quay.io/petr_ruzicka/raw-photo-tools
+      container_image_product_id: 12345
+      container_image_vendor: MyCompany
+      container_image_authors: petr.ruzicka@gmail.com
+      container_image_repository_url: https://quay.io/repository/petr_ruzicka/raw-photo-tools?tab=tags
+      container_image_expires_after: ${{ inputs.container_image_expires_after || '730' }} # days
+      # https://github.com/actions/runner/issues/1483
+      container_registry_push: ${{ inputs.container_registry_push == true && true || false }}
+      container_image_skip_vulnerability_checks: ${{ inputs.container_image_skip_vulnerability_checks == true && true || false }}
+    secrets:
+      container_registry_user: ${{ secrets.CONTAINER_REGISTRY_USER }}
+      container_registry_password: ${{ secrets.CONTAINER_REGISTRY_PASSWORD }}
+
+  create-release:
     runs-on: ubuntu-latest
+    if: ${{ startsWith(github.ref, 'refs/tags/') }}
+    permissions:
+      contents: write
+      id-token: write
     steps:
-
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
-      - name: Login to ${{ env.CONTAINER_REGISTRY }}
-        uses: docker/login-action@v1
-        with:
-          registry: ghcr.io
-          username: ${{ env.CONTAINER_REGISTRY_USER }}
-          password: ${{ env.CONTAINER_REGISTRY_PASSWORD }}
-
-      - name: Prepare
-        id: tags
+      - name: Create Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          case "${GITHUB_REF}" in
-            refs/tags/*)  VERSION="${GITHUB_REF#refs/tags/}" ;;
-            refs/heads/*) VERSION=$(echo "${GITHUB_REF#refs/heads/}" | sed -r 's#/+#-#g') ;;
-            refs/pull/*)  VERSION="pr-${{ github.event.number }}" ;;
-            *)            VERSION="sha-${GITHUB_SHA::8}" ;;
-          esac
-          echo "::set-output name=IMAGE_BASE_NAME::$(awk '/^FROM .*/ { print $2 }' Dockerfile)"
-          echo "::set-output name=BUILD_DATE::$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-          echo "::set-output name=VERSION::${VERSION}"
-
-      - name: Docker meta
-        id: meta
-        uses: docker/metadata-action@v3
-        with:
-          images:
-            ghcr.io/${{ github.repository_owner }}/${{ env.CONTAINER_IMAGE_NAME }}
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            latest
-          labels: |
-            org.opencontainers.image.authors=${{ github.actor }}
-            org.opencontainers.image.base.name=${{ steps.tags.outputs.IMAGE_BASE_NAME }}
-            org.opencontainers.image.created=${{ steps.tags.outputs.BUILD_DATE }}
-            org.opencontainers.image.description=${{ github.event.repository.description }}
-            org.opencontainers.image.documentation=https://github.com/${{ github.repository }}/blob/main/README.md
-            org.opencontainers.image.licenses=${{ github.event.repository.license.spdx_id }}
-            org.opencontainers.image.ref.name=${{ github.ref }}
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.source=${{ github.event.repository.clone_url }}
-            org.opencontainers.image.title=${{ github.event.repository.name }}
-            org.opencontainers.image.url=${{ github.event.repository.html_url }}
-            org.opencontainers.image.version=${{ steps.tags.outputs.VERSION }}
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v1
-
-      - name: Build
-        uses: docker/build-push-action@v2
-        id: build-push-action
-        with:
-          context: ./
-          load: true
-          tags: ${{ steps.meta.outputs.tags }}
-
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: ghcr.io/${{ github.repository_owner }}/${{ env.CONTAINER_IMAGE_NAME }}:${{ steps.meta.outputs.version }}
-          ignore-unfixed: true
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-          severity: 'CRITICAL'
-
-      - name: Upload Trivy scan results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v1
-        with:
-          sarif_file: 'trivy-results.sarif'
-
-      - name: Scan image - Anchore
-        uses: anchore/scan-action@v3
-        id: anchore-scan
-        with:
-          image: ghcr.io/${{ github.repository_owner }}/${{ env.CONTAINER_IMAGE_NAME }}:${{ steps.meta.outputs.version }}
-          fail-build: true
-          severity-cutoff: critical
-
-      - name: Upload Anchore scan SARIF report
-        uses: github/codeql-action/upload-sarif@v1
-        with:
-          sarif_file: ${{ steps.anchore-scan.outputs.sarif }}
-
-      - name: Build and push
-        if: ${{ github.event_name != 'pull_request' }}
-        uses: docker/build-push-action@v2
-        with:
-          context: ./
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          set -euxo pipefail
+          gh release create ${{ github.ref_name }} --generate-notes
