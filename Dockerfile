@@ -7,6 +7,6 @@ RUN set -eux && \
     apk add --no-cache darktable exiftool && \
     mkdir -pv /.config/darktable /usr/share/locale
 
-USER guest
+USER nobody
 
 WORKDIR /mnt
