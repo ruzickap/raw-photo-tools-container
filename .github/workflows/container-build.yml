@@ -42,7 +42,7 @@ jobs:
             container_image_dockerfile_location: Dockerfile
             # This is the "default Dockerfile", which will create tags without any suffix (like 'latest')
             container_image_tag_suffix: ""
-            container_image_platforms: linux/amd64,linux/arm64,linux/arm/v7
+            container_image_platforms: linux/amd64,linux/arm64
             container_image_logo_url: https://raw.githubusercontent.com/darktable-org/darktable/18da91c0edd360f932ad5f32591ab4209ce8e0ca/data/pixmaps/scalable/darktable.svg
 
     uses: ruzickap/container-build/.github/workflows/container-build-reusable-workflow.yml@main
