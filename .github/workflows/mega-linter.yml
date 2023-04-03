@@ -6,10 +6,15 @@ on:
     branches-ignore:
       - main
 
+permissions: read-all
+
 jobs:
   build:
     name: MegaLinter
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      statuses: write
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
@@ -26,9 +31,3 @@ jobs:
           PRINT_ALPACA: false
           SARIF_REPORTER: true
           VALIDATE_ALL_CODEBASE: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
-
-      - name: Upload MegaLinter scan results to GitHub Security tab
-        if: ${{ always() }}
-        uses: github/codeql-action/upload-sarif@v2
-        with:
-          sarif_file: "megalinter-reports/megalinter-report.sarif"
