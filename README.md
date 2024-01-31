@@ -25,7 +25,7 @@ Complex example:
 
 set -euxo pipefail
 
-docker run --rm -i --user "$(id -u ${USER}):$(id -g ${USER})" -v "${PWD}:/mnt" --workdir="/mnt" quay.io/petr_ruzicka/raw-photo-tools:latest /bin/sh << \EOF
+docker run --rm -i --user "$(id -u "${USER}"):$(id -g "${USER}")" -v "${PWD}:/mnt" --workdir="/mnt" quay.io/petr_ruzicka/raw-photo-tools:latest /bin/sh << \EOF
 
 for XMP_FILE in *.xmp; do
   RAW_FILE=$(exiftool -DerivedFrom $XMP_FILE | sed -e 's/^Derived From\s*:\s\(.*\)/\1/')
